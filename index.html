@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Zombie Shooter</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #111;
+        }
+    </style>
+</head>
+<body>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // Initialize scene, camera, and renderer
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Add island as a plane
+        const islandGeometry = new THREE.CircleGeometry(15, 64);
+        const islandMaterial = new THREE.MeshStandardMaterial({ color: 0x228b22 });
+        const island = new THREE.Mesh(islandGeometry, islandMaterial);
+        island.rotation.x = -Math.PI / 2;
+        scene.add(island);
+
+        // Add ambient light and directional light
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+        directionalLight.position.set(5, 10, 7.5);
+        scene.add(directionalLight);
+
+        // Player setup
+        const playerGeometry = new THREE.CylinderGeometry(0.5, 0.5, 1.8, 32);
+        const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        scene.add(player);
+
+        player.position.z = -5;
+        player.position.y = 0.9;
+
+        // Weapons setup
+        const weapons = {
+            pistol: { color: 0x999999, damage: 1, speed: 0.5 },
+            rifle: { color: 0x333333, damage: 2, speed: 0.8 },
+            shotgun: { color: 0x660000, damage: 3, speed: 0.3 }
+        };
+        let currentWeapon = 'pistol';
+
+        // Bullet setup
+        const bullets = [];
+
+        // Zombie setup
+        const zombies = [];
+        const zombieGeometry = new THREE.ConeGeometry(0.5, 1.5, 32);
+        const zombieMaterial = new THREE.MeshStandardMaterial({ color: 0x8b0000 });
+
+        function spawnZombie() {
+            const zombie = new THREE.Mesh(zombieGeometry, zombieMaterial);
+
+            // Spawn on the edge of the island
+            const angle = Math.random() * Math.PI * 2;
+            zombie.position.x = Math.cos(angle) * 14;
+            zombie.position.z = Math.sin(angle) * 14;
+            zombie.position.y = 0.75;
+
+            zombies.push(zombie);
+            scene.add(zombie);
+        }
+
+        setInterval(spawnZombie, 2000);
+
+        // Controls
+        const keys = { left: false, right: false, up: false, down: false, space: false, weapon1: false, weapon2: false, weapon3: false };
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft') keys.left = true;
+            if (e.code === 'ArrowRight') keys.right = true;
+            if (e.code === 'ArrowUp') keys.up = true;
+            if (e.code === 'ArrowDown') keys.down = true;
+            if (e.code === 'Space') keys.space = true;
+            if (e.code === 'Digit1') currentWeapon = 'pistol';
+            if (e.code === 'Digit2') currentWeapon = 'rifle';
+            if (e.code === 'Digit3') currentWeapon = 'shotgun';
+        });
+
+        window.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft') keys.left = false;
+            if (e.code === 'ArrowRight') keys.right = false;
+            if (e.code === 'ArrowUp') keys.up = false;
+            if (e.code === 'ArrowDown') keys.down = false;
+            if (e.code === 'Space') keys.space = false;
+        });
+
+        // Gamepad setup
+        let gamepadConnected = false;
+        let gamepadIndex;
+
+        window.addEventListener('gamepadconnected', (e) => {
+            gamepadConnected = true;
+            gamepadIndex = e.gamepad.index;
+            console.log('Gamepad connected:', e.gamepad);
+        });
+
+        window.addEventListener('gamepaddisconnected', () => {
+            gamepadConnected = false;
+            console.log('Gamepad disconnected');
+        });
+
+        function processGamepadInput() {
+            if (!gamepadConnected) return;
+
+            const gamepad = navigator.getGamepads()[gamepadIndex];
+            if (!gamepad) return;
+
+            // Left stick for movement
+            const leftStickX = gamepad.axes[0];
+            const leftStickY = gamepad.axes[1];
+
+            if (Math.abs(leftStickX) > 0.2) player.position.x += leftStickX * 0.1;
+            if (Math.abs(leftStickY) > 0.2) player.position.z += leftStickY * 0.1;
+
+            // Right stick for camera rotation
+            const rightStickX = gamepad.axes[2];
+            const rightStickY = gamepad.axes[3];
+
+            if (Math.abs(rightStickX) > 0.2) camera.rotation.y -= rightStickX * 0.05;
+            if (Math.abs(rightStickY) > 0.2) camera.rotation.x -= rightStickY * 0.05;
+
+            // Buttons for actions
+            if (gamepad.buttons[7].pressed) shootBullet(); // R2 for shooting
+            if (gamepad.buttons[6].pressed) console.log('Aiming...'); // L2 for aiming
+            if (gamepad.buttons[4].pressed) currentWeapon = 'pistol'; // L1 for previous weapon
+            if (gamepad.buttons[5].pressed) currentWeapon = 'rifle'; // R1 for next weapon
+            if (gamepad.buttons[0].pressed) console.log('Jumping...'); // Cross for jump
+            if (gamepad.buttons[1].pressed) console.log('Sliding...'); // Circle for sliding
+            if (gamepad.buttons[2].pressed) console.log('Reloading...'); // Square for reload
+        }
+
+        function shootBullet() {
+            const weapon = weapons[currentWeapon];
+            const bulletGeometry = new THREE.SphereGeometry(0.2, 16, 16);
+            const bulletMaterial = new THREE.MeshStandardMaterial({ color: weapon.color });
+            const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+
+            bullet.position.copy(player.position);
+            bullet.damage = weapon.damage;
+            bullet.speed = weapon.speed;
+
+            bullets.push(bullet);
+            scene.add(bullet);
+        }
+
+        // Game loop
+        function animate() {
+            requestAnimationFrame(animate);
+
+            processGamepadInput();
+
+            // Player movement
+            if (keys.left && player.position.x > -14) player.position.x -= 0.1;
+            if (keys.right && player.position.x < 14) player.position.x += 0.1;
+            if (keys.up && player.position.z > -14) player.position.z -= 0.1;
+            if (keys.down && player.position.z < 14) player.position.z += 0.1;
+
+            // Shooting
+            if (keys.space) {
+                shootBullet();
+                keys.space = false; // Prevent holding space to spam bullets
+            }
+
+            // Update bullets
+            bullets.forEach((bullet, index) => {
+                bullet.position.z -= bullet.speed;
+                if (
+                    bullet.position.x > 15 ||
+                    bullet.position.x < -15 ||
+                    bullet.position.z > 15 ||
+                    bullet.position.z < -15
+                ) {
+                    scene.remove(bullet);
+                    bullets.splice(index, 1);
+                }
+            });
+
+            // Update zombies
+            zombies.forEach((zombie, index) => {
+                const direction = new THREE.Vector3();
+                direction.subVectors(player.position, zombie.position).normalize();
+                zombie.position.addScaledVector(direction, 0.02);
+
+                if (zombie.position.distanceTo(player.position) < 1) {
+                    console.log('Game Over');
+                }
+            });
+
+            // Check collisions
+            bullets.forEach((bullet, bulletIndex) => {
+                zombies.forEach((zombie, zombieIndex) => {
+                    if (bullet.position.distanceTo(zombie.position) < 0.5) {
+                        scene.remove(bullet);
+                        scene.remove(zombie);
+                        bullets.splice(bulletIndex, 1);
+                        zombies.splice(zombieIndex, 1);
+                    }
+                });
+            });
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+
+        // Adjust canvas on resize
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+    </script>
+</body>
+</html>
